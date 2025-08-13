@@ -1,0 +1,47 @@
+name: E2E Headless Tests
+
+on:
+  push:            # istersen tüm branch'lerde çalışsın
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TZ: Europe/Istanbul
+      HEADLESS: "1"
+      BASE_URL: ${{ secrets.BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: browser-actions/setup-chrome@v1
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install selenium; fi
+      - name: Create test_user_data.json
+        run: |
+          cat > test_user_data.json <<'JSON'
+          {
+            "email": "${{ secrets.TEST_EMAIL }}",
+            "username": "${{ secrets.TEST_USERNAME }}",
+            "password": "${{ secrets.TEST_PASSWORD }}"
+          }
+          JSON
+      - name: Run all tests (headless)
+        run: python main.py
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          if-no-files-found: ignore
+          path: |
+            **/*.log
+            **/*.png
+            run.log
