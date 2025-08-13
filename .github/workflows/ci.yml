@@ -1,7 +1,7 @@
 name: E2E Headless Tests
 
 on:
-  push:            # istersen tüm branch'lerde çalışsın
+  push:
     branches: ['**']
   pull_request:
   workflow_dispatch:
@@ -13,17 +13,19 @@ jobs:
     env:
       TZ: Europe/Istanbul
       HEADLESS: "1"
-      BASE_URL: ${{ secrets.BASE_URL }}
+      BASE_URL: ${{ secrets.BASE_URL }}   # yine kalsın; bazı scriptler ENV de okuyabilir
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - uses: browser-actions/setup-chrome@v1
+
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install selenium; fi
+
       - name: Create test_user_data.json
         run: |
           cat > test_user_data.json <<'JSON'
@@ -33,8 +35,20 @@ jobs:
             "password": "${{ secrets.TEST_PASSWORD }}"
           }
           JSON
+
+      # 🔴 register.py .env beklediği için ŞART!
+      - name: Create .env for CI
+        run: |
+          {
+            echo "BASE_URL=${{ secrets.BASE_URL }}";
+            echo "HEADLESS=1";
+          } > .env
+          test -s .env || (echo "ERROR: .env not created" && exit 1)
+          awk -F= '{print $1"=[REDACTED]"}' .env
+
       - name: Run all tests (headless)
         run: python main.py
+
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
