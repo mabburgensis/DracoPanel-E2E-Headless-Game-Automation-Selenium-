@@ -2,9 +2,13 @@ name: E2E Headless Tests
 
 on:
   push:
-    branches: ['**']
+    branches: ['**']     # tüm branch'lerde çalıştır
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -13,49 +17,46 @@ jobs:
     env:
       TZ: Europe/Istanbul
       HEADLESS: "1"
-      BASE_URL: ${{ secrets.BASE_URL }}   # yine kalsın; bazı scriptler ENV de okuyabilir
+      # BASE_URL'i burada açıkça tanımlıyoruz
+      BASE_URL: "https://operator-frontend-v2-641161620205.europe-west1.run.app/"
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - uses: browser-actions/setup-chrome@v1
 
-      - name: Install deps
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install selenium; fi
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install selenium
+          fi
 
-      - name: Create test_user_data.json
-        run: |
-          cat > test_user_data.json <<'JSON'
-          {
-            "email": "${{ secrets.TEST_EMAIL }}",
-            "username": "${{ secrets.TEST_USERNAME }}",
-            "password": "${{ secrets.TEST_PASSWORD }}"
-          }
-          JSON
-
-      # 🔴 register.py .env beklediği için ŞART!
-      - name: Create .env for CI
+      # Kodun ENV'den okuyorsa zaten yeterli; .env gerekiyorsa da aşağıdaki adım işi çözer
+      - name: Create .env from env (for scripts that require it)
         run: |
           {
-            echo "BASE_URL=${{ secrets.BASE_URL }}";
-            echo "HEADLESS=1";
+            echo "BASE_URL=${BASE_URL}";
+            echo "HEADLESS=${HEADLESS}";
           } > .env
-          test -s .env || (echo "ERROR: .env not created" && exit 1)
+          # değerleri göstermeden kısa sağlık kontrolü:
           awk -F= '{print $1"=[REDACTED]"}' .env
 
       - name: Run all tests (headless)
         run: python main.py
 
-      - name: Upload artifacts
+      - name: Upload artifacts (logs/screenshots if any)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-artifacts
-          if-no-files-found: ignore
-          path: |
-            **/*.log
-            **/*.png
-            run.log
